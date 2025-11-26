@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Estado de habitaciones</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #e5e7eb;
+      color: #111827;
+    }
+    h1 { margin: 0 0 4px; font-size: 2rem; }
+    p.subtitle { margin: 0 0 16px; color: #6b7280; font-size: 0.95rem; }
+
+    /* RESUMEN */
+    #summary {
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 12px 16px;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+      margin-bottom: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      font-size: 0.9rem;
+      align-items: center;
+    }
+
+    .summary-item {
+      display: flex;
+      gap: 4px;
+      align-items: baseline;
+    }
+
+    .summary-label {
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .export-btn {
+      border: none;
+      border-radius: 999px;
+      padding: 8px 16px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      background: #2563eb;
+      color: white;
+      margin: 0 0 18px;
+      box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+      transition: background .15s, transform .05s, box-shadow .05s;
+    }
+
+    .export-btn:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.45);
+    }
+
+    #rooms {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 18px;
+    }
+
+    .room-card {
+      background: #f9fafb;
+      border-radius: 16px;
+      padding: 14px 16px 16px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border: 1px solid #e5e7eb;
+    }
+
+    /* CABECERA GRANDE */
+    .room-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0 6px;
+    }
+
+    .room-name {
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: #111827;
+    }
+
+    .status-pill {
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: white;
+      min-width: 96px;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+
+    .status-free { background: #16a34a; }
+    .status-occupied { background: #dc2626; }
+
+    /* FECHA DE SALIDA DESTACADA */
+    .date-row-main {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9rem;
+      color: #111827;
+      padding: 4px 10px;
+      border-radius: 10px;
+      background: #e5f3ff;
+    }
+
+    .date-label-main {
+      font-weight: 700;
+    }
+
+    .date-input {
+      font-size: 0.9rem;
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid #bfdbfe;
+      background: #ffffff;
+      min-width: 0;
+    }
+
+    .date-input:disabled {
+      background: #e5e7eb;
+      color: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    /* PAQUETE DE DATOS HUESPED */
+    .guest-block {
+      background: #ffffff;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .guest-block-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #6b7280;
+      margin-bottom: 2px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: #4b5563;
+      flex-wrap: wrap;
+    }
+
+    .row-label {
+      white-space: nowrap;
+      min-width: 70px;
+      font-weight: 500;
+    }
+
+    .text-input,
+    .number-input {
+      font-size: 0.85rem;
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .text-input:disabled,
+    .number-input:disabled,
+    .nationality-select:disabled {
+      background: #e5e7eb;
+      color: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    /* Nacionalidad */
+    .nationality-select {
+      font-size: 0.85rem;
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      max-width: 100%;
+      flex: 1;
+    }
+
+    /* LIMPIEZA */
+    .clean-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: #4b5563;
+      margin-top: 4px;
+    }
+
+    .clean-label {
+      font-weight: 500;
+      min-width: 70px;
+    }
+
+    .clean-btn {
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      transition: .15s;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+    }
+    .clean-green  { background: #16a34a; }
+    .clean-red    { background: #dc2626; }
+    .clean-purple { background: #7c3aed; }
+    .clean-yellow { background: #eab308; }
+
+    /* BOTÓN OCUPADO/LIBRE */
+    .toggle-btn {
+      border: none;
+      border-radius: 999px;
+      padding: 7px 14px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      background: #e5e7eb;
+      transition: .15s;
+      align-self: flex-start;
+      margin-top: 4px;
+    }
+
+    .toggle-btn:hover {
+      background: #d1d5db;
+    }
+  </style>
+</head>
+<body>
+  <h1>Estado de habitaciones</h1>
+  <p class="subtitle">
+    Estados, fechas, limpieza, nacionalidad, nombre y edad se guardan automáticamente en este navegador.
+  </p>
+
+  <div id="summary"></div>
+  <button id="exportBtn" class="export-btn">Exportar a Excel (CSV)</button>
+
+  <div id="rooms"></div>
+
+  <script>
+    // LISTA DE HABITACIONES
+    const rooms = Array.from({ length: 19 }, (_, i) => ({
+      id: i + 1, name: "Habitación " + (i + 1)
+    }));
+
+    // Claves del localStorage
+    const KEY_STATE = "estado_habitaciones";
+    const KEY_DATES = "salida_habitaciones";
+    const KEY_CLEAN = "limpieza_habitaciones";
+    const KEY_NAT   = "nacionalidad_habitaciones";
+    const KEY_NAME  = "nombre_habitaciones";
+    const KEY_AGE   = "edad_habitaciones";
+
+    // Datos almacenados
+    const savedStates = JSON.parse(localStorage.getItem(KEY_STATE)) || {};
+    const savedDates  = JSON.parse(localStorage.getItem(KEY_DATES)) || {};
+    const savedClean  = JSON.parse(localStorage.getItem(KEY_CLEAN)) || {};
+    const savedNat    = JSON.parse(localStorage.getItem(KEY_NAT))   || {};
+    const savedName   = JSON.parse(localStorage.getItem(KEY_NAME))  || {};
+    const savedAge    = JSON.parse(localStorage.getItem(KEY_AGE))   || {};
+
+    const roomsContainer = document.getElementById("rooms");
+    const summaryDiv = document.getElementById("summary");
+    const exportBtn = document.getElementById("exportBtn");
+
+    function save(obj, key) {
+      localStorage.setItem(key, JSON.stringify(obj));
+    }
+
+    // Lista de países
+    const countries = [
+      "", "Alemania", "Argentina", "Australia", "Austria", "Bélgica", "Bolivia",
+      "Brasil", "Bulgaria", "Canadá", "Chile", "China", "Colombia", "Corea del Sur",
+      "Costa Rica", "Croacia", "Cuba", "Dinamarca", "Ecuador", "Egipto",
+      "El Salvador", "Emiratos Árabes Unidos", "Eslovaquia", "Eslovenia", "España",
+      "Estados Unidos", "Estonia", "Filipinas", "Finlandia", "Francia",
+      "Grecia", "Guatemala", "Honduras", "Hungría", "India", "Indonesia", "Irlanda",
+      "Islandia", "Israel", "Italia", "Japón", "Letonia", "Lituania", "Luxemburgo",
+      "Malasia", "Malta", "Marruecos", "México", "Nicaragua", "Noruega",
+      "Nueva Zelanda", "Países Bajos", "Panamá", "Paraguay", "Perú", "Polonia",
+      "Portugal", "Reino Unido", "República Checa", "República Dominicana",
+      "Rumanía", "Rusia", "Singapur", "Sudáfrica", "Suecia", "Suiza", "Tailandia",
+      "Turquía", "Ucrania", "Uruguay", "Venezuela", "Otro"
+    ];
+
+    // Texto para estado de limpieza
+    const cleanLabels = ["Limpia", "Sucia", "En proceso", "Revisar"];
+
+    function updateSummary() {
+      const total = rooms.length;
+      let occupied = 0;
+      let free = 0;
+      const ages = [];
+      const departures = [];
+
+      rooms.forEach(room => {
+        const id = room.id;
+        const state = savedStates[id] || "free";
+        if (state === "occupied") occupied++; else free++;
+
+        const ageStr = savedAge[id];
+        if (ageStr) {
+          const ageNum = parseInt(ageStr, 10);
+          if (!isNaN(ageNum)) ages.push(ageNum);
+        }
+
+        const dateStr = savedDates[id];
+        if (state === "occupied" && dateStr) {
+          const d = new Date(dateStr);
+          if (!isNaN(d.getTime())) {
+            departures.push({ room: room.name, dateStr, date: d });
+          }
+        }
+      });
+
+      // Rango de edades
+      let ageRangeText = "Sin edades registradas.";
+      if (ages.length > 0) {
+        const minAge = Math.min(...ages);
+        const maxAge = Math.max(...ages);
+        ageRangeText = (minAge === maxAge)
+          ? `${minAge} años`
+          : `${minAge}–${maxAge} años`;
+      }
+
+      // Próximas salidas
+      departures.sort((a, b) => a.date - b.date);
+      let nextDeparturesText = "No hay salidas registradas.";
+      if (departures.length > 0) {
+        const top = departures.slice(0, 3).map(d => `${d.room}: ${d.dateStr}`);
+        nextDeparturesText = top.join(" · ");
+      }
+
+      summaryDiv.innerHTML = `
+        <div class="summary-item">
+          <span class="summary-label">Ocupadas:</span>
+          <span>${occupied} / ${total}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Libres:</span>
+          <span>${free}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Rango de edades:</span>
+          <span>${ageRangeText}</span>
+        </div>
+        <div class="summary-item" style="flex-basis:100%;">
+          <span class="summary-label">Próximas salidas:</span>
+          <span>${nextDeparturesText}</span>
+        </div>
+      `;
+    }
+
+    function exportToCSV() {
+      const header = [
+        "Habitación",
+        "Estado",
+        "Nombre",
+        "Edad",
+        "Nacionalidad",
+        "Fecha salida",
+        "Estado limpieza"
+      ];
+
+      const rows = [header];
+
+      rooms.forEach(room => {
+        const id = room.id;
+        const state = savedStates[id] || "free";
+        const stateText = state === "occupied" ? "Ocupado" : "Libre";
+        const name = savedName[id] || "";
+        const age = savedAge[id] || "";
+        const nat = savedNat[id] || "";
+        const date = savedDates[id] || "";
+        const cleanIdx = savedClean[id] ?? 0;
+        const cleanText = cleanLabels[cleanIdx] || cleanLabels[0];
+
+        const row = [room.name, stateText, name, age, nat, date, cleanText];
+        rows.push(row);
+      });
+
+      const csvContent = rows
+        .map(row =>
+          row
+            .map(field => {
+              const f = String(field).replace(/"/g, '""');
+              return `"${f}"`;
+            })
+            .join(";")
+        )
+        .join("\r\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "habitaciones.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    rooms.forEach(room => {
+      const card = document.createElement("div");
+      card.className = "room-card";
+
+      /* CABECERA GRANDE */
+      const header = document.createElement("div");
+      header.className = "room-header";
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "room-name";
+      nameEl.textContent = room.name;
+
+      const statusEl = document.createElement("div");
+      statusEl.className = "status-pill";
+      statusEl.dataset.state = savedStates[room.id] || "free";
+
+      if (statusEl.dataset.state === "occupied") {
+        statusEl.classList.add("status-occupied");
+        statusEl.textContent = "Ocupado";
+      } else {
+        statusEl.classList.add("status-free");
+        statusEl.textContent = "Libre";
+      }
+
+      header.appendChild(nameEl);
+      header.appendChild(statusEl);
+
+      /* FECHA DE SALIDA (fila principal) */
+      const dateRow = document.createElement("div");
+      dateRow.className = "date-row-main";
+
+      const dateLabel = document.createElement("span");
+      dateLabel.className = "date-label-main";
+      dateLabel.textContent = "Salida:";
+
+      const dateInput = document.createElement("input");
+      dateInput.type = "date";
+      dateInput.className = "date-input";
+
+      if (savedDates[room.id]) dateInput.value = savedDates[room.id];
+      dateInput.disabled = statusEl.dataset.state === "free";
+
+      dateInput.addEventListener("change", () => {
+        savedDates[room.id] = dateInput.value || null;
+        save(savedDates, KEY_DATES);
+        updateSummary();
+      });
+
+      dateRow.appendChild(dateLabel);
+      dateRow.appendChild(dateInput);
+
+      /* BLOQUE DE HUÉSPED (nombre, edad, nacionalidad) */
+      const guestBlock = document.createElement("div");
+      guestBlock.className = "guest-block";
+
+      const guestTitle = document.createElement("div");
+      guestTitle.className = "guest-block-title";
+      guestTitle.textContent = "Datos del huésped";
+      guestBlock.appendChild(guestTitle);
+
+      // Nombre
+      const guestRow = document.createElement("div");
+      guestRow.className = "row";
+
+      const guestLabel = document.createElement("span");
+      guestLabel.className = "row-label";
+      guestLabel.textContent = "Nombre:";
+
+      const guestInput = document.createElement("input");
+      guestInput.type = "text";
+      guestInput.className = "text-input";
+      guestInput.placeholder = "Nombre huésped";
+
+      if (savedName[room.id]) guestInput.value = savedName[room.id];
+      guestInput.disabled = statusEl.dataset.state === "free";
+
+      guestInput.addEventListener("input", () => {
+        savedName[room.id] = guestInput.value || "";
+        save(savedName, KEY_NAME);
+        updateSummary();
+      });
+
+      guestRow.appendChild(guestLabel);
+      guestRow.appendChild(guestInput);
+
+      // Edad
+      const ageRow = document.createElement("div");
+      ageRow.className = "row";
+
+      const ageLabel = document.createElement("span");
+      ageLabel.className = "row-label";
+      ageLabel.textContent = "Edad:";
+
+      const ageInput = document.createElement("input");
+      ageInput.type = "number";
+      ageInput.className = "number-input";
+      ageInput.min = "0";
+      ageInput.placeholder = "Edad";
+
+      if (savedAge[room.id]) ageInput.value = savedAge[room.id];
+      ageInput.disabled = statusEl.dataset.state === "free";
+
+      ageInput.addEventListener("input", () => {
+        savedAge[room.id] = ageInput.value || "";
+        save(savedAge, KEY_AGE);
+        updateSummary();
+      });
+
+      ageRow.appendChild(ageLabel);
+      ageRow.appendChild(ageInput);
+
+      // Nacionalidad
+      const natRow = document.createElement("div");
+      natRow.className = "row";
+
+      const natLabel = document.createElement("span");
+      natLabel.className = "row-label";
+      natLabel.textContent = "Nacionalidad:";
+
+      const natSelect = document.createElement("select");
+      natSelect.className = "nationality-select";
+
+      countries.forEach(country => {
+        const opt = document.createElement("option");
+        opt.value = country;
+        opt.textContent = country === "" ? "Seleccione país..." : country;
+        natSelect.appendChild(opt);
+      });
+
+      if (savedNat[room.id]) {
+        natSelect.value = savedNat[room.id];
+      }
+
+      natSelect.disabled = statusEl.dataset.state === "free";
+
+      natSelect.addEventListener("change", () => {
+        savedNat[room.id] = natSelect.value || "";
+        save(savedNat, KEY_NAT);
+      });
+
+      natRow.appendChild(natLabel);
+      natRow.appendChild(natSelect);
+
+      guestBlock.appendChild(guestRow);
+      guestBlock.appendChild(ageRow);
+      guestBlock.appendChild(natRow);
+
+      /* ESTADO DE LIMPIEZA (debajo del paquete) */
+      const cleanRow = document.createElement("div");
+      cleanRow.className = "clean-row";
+
+      const cleanLabel = document.createElement("span");
+      cleanLabel.className = "clean-label";
+      cleanLabel.textContent = "Limpieza:";
+
+      const cleanBtn = document.createElement("button");
+      cleanBtn.className = "clean-btn";
+
+      const colors = ["clean-green", "clean-red", "clean-purple", "clean-yellow"];
+      let cleanState = savedClean[room.id] ?? 0;
+      cleanBtn.classList.add(colors[cleanState]);
+
+      cleanBtn.addEventListener("click", () => {
+        cleanBtn.classList.remove(colors[cleanState]);
+        cleanState = (cleanState + 1) % colors.length;
+        cleanBtn.classList.add(colors[cleanState]);
+        savedClean[room.id] = cleanState;
+        save(savedClean, KEY_CLEAN);
+      });
+
+      cleanRow.appendChild(cleanLabel);
+      cleanRow.appendChild(cleanBtn);
+
+      /* BOTÓN OCUPADO/LIBRE */
+      const btn = document.createElement("button");
+      btn.className = "toggle-btn";
+      btn.textContent =
+        statusEl.dataset.state === "free"
+          ? "Cambiar a ocupado"
+          : "Cambiar a libre";
+
+      btn.addEventListener("click", () => {
+        if (statusEl.dataset.state === "free") {
+          // Libre → Ocupado
+          statusEl.dataset.state = "occupied";
+          statusEl.classList.replace("status-free", "status-occupied");
+          statusEl.textContent = "Ocupado";
+          btn.textContent = "Cambiar a libre";
+
+          dateInput.disabled = false;
+          guestInput.disabled = false;
+          ageInput.disabled = false;
+          natSelect.disabled = false;
+
+          savedStates[room.id] = "occupied";
+          save(savedStates, KEY_STATE);
+        } else {
+          // Ocupado → Libre: limpiar datos de huésped
+          statusEl.dataset.state = "free";
+          statusEl.classList.replace("status-occupied", "status-free");
+          statusEl.textContent = "Libre";
+          btn.textContent = "Cambiar a ocupado";
+
+          // Limpiar campos
+          dateInput.value = "";
+          guestInput.value = "";
+          ageInput.value = "";
+          natSelect.value = "";
+
+          // Desactivar campos
+          dateInput.disabled = true;
+          guestInput.disabled = true;
+          ageInput.disabled = true;
+          natSelect.disabled = true;
+
+          // Borrar de memoria
+          savedStates[room.id] = "free";
+          save(savedStates, KEY_STATE);
+
+          delete savedDates[room.id];
+          save(savedDates, KEY_DATES);
+
+          delete savedName[room.id];
+          save(savedName, KEY_NAME);
+
+          delete savedAge[room.id];
+          save(savedAge, KEY_AGE);
+
+          delete savedNat[room.id];
+          save(savedNat, KEY_NAT);
+        }
+        updateSummary();
+      });
+
+      /* ARMAR TARJETA */
+      card.appendChild(header);      // grande: habitación + estado
+      card.appendChild(dateRow);     // fecha en negrita
+      card.appendChild(guestBlock);  // paquete nombre + edad + nacionalidad
+      card.appendChild(cleanRow);    // limpieza
+      card.appendChild(btn);         // botón final
+
+      roomsContainer.appendChild(card);
+    });
+
+    // Eventos globales
+    exportBtn.addEventListener("click", exportToCSV);
+
+    // Primera actualización del resumen
+    updateSummary();
+  </script>
+</body>
+</html>
