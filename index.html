@@ -4,8 +4,11 @@
   <meta charset="UTF-8" />
   <title>Estado de habitaciones Alsatia</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Manifest PWA (asumiendo que ya lo tienes) -->
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#111827" />
+
   <style>
     * { box-sizing: border-box; }
     body {
@@ -107,21 +110,28 @@
     .status-free { background: #16a34a; }
     .status-occupied { background: #dc2626; }
 
-    /* FECHA DE SALIDA DESTACADA */
-    .date-row-main {
+    /* BLOQUE ENTRADA / SALIDA / CÓDIGO */
+    .dates-code-block {
       display: flex;
       flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
+      gap: 8px 12px;
       font-size: 0.9rem;
       color: #111827;
-      padding: 4px 10px;
+      padding: 6px 10px;
       border-radius: 10px;
       background: #e5f3ff;
     }
 
-    .date-label-main {
+    .dates-code-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .dates-code-label {
       font-weight: 700;
+      white-space: nowrap;
     }
 
     .date-input {
@@ -133,7 +143,18 @@
       min-width: 0;
     }
 
-    .date-input:disabled {
+    .code-input {
+      font-size: 0.9rem;
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid #bfdbfe;
+      background: #ffffff;
+      min-width: 0;
+      max-width: 130px;
+    }
+
+    .date-input:disabled,
+    .code-input:disabled {
       background: #e5e7eb;
       color: #9ca3af;
       cursor: not-allowed;
@@ -204,14 +225,15 @@
       flex: 1;
     }
 
-    /* LIMPIEZA */
+    /* LIMPIEZA + SÁBANAS */
     .clean-row {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 12px;
       font-size: 0.85rem;
       color: #4b5563;
       margin-top: 4px;
+      flex-wrap: wrap;
     }
 
     .clean-label {
@@ -232,6 +254,32 @@
     .clean-red    { background: #dc2626; }
     .clean-purple { background: #7c3aed; }
     .clean-yellow { background: #eab308; }
+
+    .sheets-block {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+    }
+
+    .sheets-label {
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .sheets-input {
+      font-size: 0.85rem;
+      padding: 3px 6px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+    }
+
+    .sheets-input:disabled {
+      background: #e5e7eb;
+      color: #9ca3af;
+      cursor: not-allowed;
+    }
 
     /* BOTÓN OCUPADO/LIBRE */
     .toggle-btn {
@@ -254,7 +302,7 @@
 <body>
   <h1>Estado de habitaciones</h1>
   <p class="subtitle">
-    Estados, fechas, limpieza, nacionalidad, nombre y edad se guardan y se sincronizan entre dispositivos.
+    Estados, fechas, códigos, limpieza, nacionalidad, nombre y edad se guardan y se sincronizan entre dispositivos.
   </p>
 
   <div id="summary"></div>
@@ -262,7 +310,7 @@
 
   <div id="rooms"></div>
 
-  <!-- Firebase (compat para hacerlo fácil en un HTML normal) -->
+  <!-- Firebase compat -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
   <script>
@@ -274,7 +322,7 @@ const firebaseConfig = {
   storageBucket: "hab-alsatia.firebasestorage.app",
   messagingSenderId: "1004070180298",
   appId: "1:1004070180298:web:9c27a2dd482489ad196b33"
-};
+    };
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
@@ -286,27 +334,33 @@ const firebaseConfig = {
       id: i + 1, name: "Habitación " + (i + 1)
     }));
 
-    // Claves del localStorage
-    const KEY_STATE = "estado_habitaciones";
-    const KEY_DATES = "salida_habitaciones";
-    const KEY_CLEAN = "limpieza_habitaciones";
-    const KEY_NAT   = "nacionalidad_habitaciones";
-    const KEY_NAME  = "nombre_habitaciones";
-    const KEY_AGE   = "edad_habitaciones";
+    // Claves localStorage
+    const KEY_STATE   = "estado_habitaciones";
+    const KEY_DATES   = "salida_habitaciones";
+    const KEY_ENTRY   = "entrada_habitaciones";
+    const KEY_CLEAN   = "limpieza_habitaciones";
+    const KEY_SHEETS  = "sabanas_habitaciones";
+    const KEY_NAT     = "nacionalidad_habitaciones";
+    const KEY_NAME    = "nombre_habitaciones";
+    const KEY_AGE     = "edad_habitaciones";
+    const KEY_CODE    = "codigo_habitaciones";
 
-    // Estado en memoria (se rellena desde Firestore o localStorage)
-    let savedStates = {};
-    let savedDates  = {};
-    let savedClean  = {};
-    let savedNat    = {};
-    let savedName   = {};
-    let savedAge    = {};
+    // Estado en memoria
+    let savedStates   = {};
+    let savedDates    = {};
+    let savedEntry    = {};
+    let savedClean    = {};
+    let savedSheets   = {};
+    let savedNat      = {};
+    let savedName     = {};
+    let savedAge      = {};
+    let savedCodes    = {};
 
     const roomsContainer = document.getElementById("rooms");
     const summaryDiv = document.getElementById("summary");
     const exportBtn = document.getElementById("exportBtn");
 
-    // Documento único en Firestore donde guardamos todo
+    // Documento único en Firestore
     const docRef = db.collection("alsatia").doc("habitaciones");
 
     // Lista de países
@@ -327,35 +381,44 @@ const firebaseConfig = {
 
     const cleanLabels = ["Limpia", "Sucia", "En proceso", "Revisar"];
 
-    // ---- Sincronización local + remota ----
+    // -------- Sincronización local / remota --------
     function aggregateState() {
       return {
-        states: savedStates,
-        dates:  savedDates,
-        clean:  savedClean,
-        nat:    savedNat,
-        names:  savedName,
-        ages:   savedAge,
+        states:  savedStates,
+        dates:   savedDates,
+        entry:   savedEntry,
+        clean:   savedClean,
+        sheets:  savedSheets,
+        nat:     savedNat,
+        names:   savedName,
+        ages:    savedAge,
+        codes:   savedCodes,
         updatedAt: new Date().toISOString()
       };
     }
 
     function loadFromLocal() {
-      savedStates = JSON.parse(localStorage.getItem(KEY_STATE)) || {};
-      savedDates  = JSON.parse(localStorage.getItem(KEY_DATES)) || {};
-      savedClean  = JSON.parse(localStorage.getItem(KEY_CLEAN)) || {};
-      savedNat    = JSON.parse(localStorage.getItem(KEY_NAT))   || {};
-      savedName   = JSON.parse(localStorage.getItem(KEY_NAME))  || {};
-      savedAge    = JSON.parse(localStorage.getItem(KEY_AGE))   || {};
+      savedStates  = JSON.parse(localStorage.getItem(KEY_STATE))   || {};
+      savedDates   = JSON.parse(localStorage.getItem(KEY_DATES))   || {};
+      savedEntry   = JSON.parse(localStorage.getItem(KEY_ENTRY))   || {};
+      savedClean   = JSON.parse(localStorage.getItem(KEY_CLEAN))   || {};
+      savedSheets  = JSON.parse(localStorage.getItem(KEY_SHEETS))  || {};
+      savedNat     = JSON.parse(localStorage.getItem(KEY_NAT))     || {};
+      savedName    = JSON.parse(localStorage.getItem(KEY_NAME))    || {};
+      savedAge     = JSON.parse(localStorage.getItem(KEY_AGE))     || {};
+      savedCodes   = JSON.parse(localStorage.getItem(KEY_CODE))    || {};
     }
 
     function mirrorToLocal() {
-      localStorage.setItem(KEY_STATE, JSON.stringify(savedStates));
-      localStorage.setItem(KEY_DATES, JSON.stringify(savedDates));
-      localStorage.setItem(KEY_CLEAN, JSON.stringify(savedClean));
-      localStorage.setItem(KEY_NAT,   JSON.stringify(savedNat));
-      localStorage.setItem(KEY_NAME,  JSON.stringify(savedName));
-      localStorage.setItem(KEY_AGE,   JSON.stringify(savedAge));
+      localStorage.setItem(KEY_STATE,  JSON.stringify(savedStates));
+      localStorage.setItem(KEY_DATES,  JSON.stringify(savedDates));
+      localStorage.setItem(KEY_ENTRY,  JSON.stringify(savedEntry));
+      localStorage.setItem(KEY_CLEAN,  JSON.stringify(savedClean));
+      localStorage.setItem(KEY_SHEETS, JSON.stringify(savedSheets));
+      localStorage.setItem(KEY_NAT,    JSON.stringify(savedNat));
+      localStorage.setItem(KEY_NAME,   JSON.stringify(savedName));
+      localStorage.setItem(KEY_AGE,    JSON.stringify(savedAge));
+      localStorage.setItem(KEY_CODE,   JSON.stringify(savedCodes));
     }
 
     let remoteSaveTimeout = null;
@@ -366,7 +429,7 @@ const firebaseConfig = {
         docRef.set(aggregateState()).catch(err => {
           console.error("Error guardando en Firestore:", err);
         });
-      }, 500); // pequeño debounce
+      }, 500);
     }
 
     function save(obj, key) {
@@ -380,13 +443,16 @@ const firebaseConfig = {
           const data = doc.data() || {};
           savedStates = data.states || {};
           savedDates  = data.dates  || {};
+          savedEntry  = data.entry  || {};
           savedClean  = data.clean  || {};
+          savedSheets = data.sheets || {};
           savedNat    = data.nat    || {};
           savedName   = data.names  || {};
           savedAge    = data.ages   || {};
+          savedCodes  = data.codes  || {};
           mirrorToLocal();
         } else {
-          // No hay datos remotos aún → tirar de local (o vacío) y subirlos
+          // No hay datos remotos aún → usar local y subir
           loadFromLocal();
           return docRef.set(aggregateState());
         }
@@ -396,7 +462,7 @@ const firebaseConfig = {
       });
     }
 
-    // ---- Resumen y exportar ----
+    // -------- Resumen y export --------
     function updateSummary() {
       const total = rooms.length;
       let occupied = 0;
@@ -411,8 +477,8 @@ const firebaseConfig = {
 
         const ageStr = savedAge[id];
         if (ageStr) {
-          const ageNum = parseInt(ageStr, 10);
-          if (!isNaN(ageNum)) ages.push(ageNum);
+          const a = parseInt(ageStr, 10);
+          if (!isNaN(a)) ages.push(a);
         }
 
         const dateStr = savedDates[id];
@@ -467,8 +533,11 @@ const firebaseConfig = {
         "Nombre",
         "Edad",
         "Nacionalidad",
+        "Código entrada",
+        "Fecha entrada",
         "Fecha salida",
-        "Estado limpieza"
+        "Estado limpieza",
+        "Fecha cambio sábanas"
       ];
 
       const rows = [header];
@@ -477,14 +546,28 @@ const firebaseConfig = {
         const id = room.id;
         const state = savedStates[id] || "free";
         const stateText = state === "occupied" ? "Ocupado" : "Libre";
-        const name = savedName[id] || "";
-        const age = savedAge[id] || "";
-        const nat = savedNat[id] || "";
-        const date = savedDates[id] || "";
+        const name  = savedName[id]   || "";
+        const age   = savedAge[id]    || "";
+        const nat   = savedNat[id]    || "";
+        const code  = savedCodes[id]  || "";
+        const entry = savedEntry[id]  || "";
+        const exitD = savedDates[id]  || "";
+        const sheets = savedSheets[id] || "";
         const cleanIdx = savedClean[id] ?? 0;
         const cleanText = cleanLabels[cleanIdx] || cleanLabels[0];
 
-        rows.push([room.name, stateText, name, age, nat, date, cleanText]);
+        rows.push([
+          room.name,
+          stateText,
+          name,
+          age,
+          nat,
+          code,
+          entry,
+          exitD,
+          cleanText,
+          sheets
+        ]);
       });
 
       const csvContent = rows
@@ -510,11 +593,12 @@ const firebaseConfig = {
       URL.revokeObjectURL(url);
     }
 
-    // ---- Construir UI una vez que tenemos datos ----
+    // -------- Construir UI --------
     function buildUI() {
       roomsContainer.innerHTML = "";
 
       rooms.forEach(room => {
+        const id = room.id;
         const card = document.createElement("div");
         card.className = "room-card";
 
@@ -528,7 +612,7 @@ const firebaseConfig = {
 
         const statusEl = document.createElement("div");
         statusEl.className = "status-pill";
-        statusEl.dataset.state = savedStates[room.id] || "free";
+        statusEl.dataset.state = savedStates[id] || "free";
 
         if (statusEl.dataset.state === "occupied") {
           statusEl.classList.add("status-occupied");
@@ -541,29 +625,82 @@ const firebaseConfig = {
         header.appendChild(nameEl);
         header.appendChild(statusEl);
 
-        // FECHA
-        const dateRow = document.createElement("div");
-        dateRow.className = "date-row-main";
+        // BLOQUE ENTRADA / SALIDA / CÓDIGO
+        const datesCodeBlock = document.createElement("div");
+        datesCodeBlock.className = "dates-code-block";
 
-        const dateLabel = document.createElement("span");
-        dateLabel.className = "date-label-main";
-        dateLabel.textContent = "Salida:";
+        // Entrada
+        const entryItem = document.createElement("div");
+        entryItem.className = "dates-code-item";
 
-        const dateInput = document.createElement("input");
-        dateInput.type = "date";
-        dateInput.className = "date-input";
+        const entryLabel = document.createElement("span");
+        entryLabel.className = "dates-code-label";
+        entryLabel.textContent = "Entrada:";
 
-        if (savedDates[room.id]) dateInput.value = savedDates[room.id];
-        dateInput.disabled = statusEl.dataset.state === "free";
+        const entryInput = document.createElement("input");
+        entryInput.type = "date";
+        entryInput.className = "date-input";
+        if (savedEntry[id]) entryInput.value = savedEntry[id];
+        entryInput.disabled = statusEl.dataset.state === "free";
 
-        dateInput.addEventListener("change", () => {
-          savedDates[room.id] = dateInput.value || null;
+        entryInput.addEventListener("change", () => {
+          savedEntry[id] = entryInput.value || null;
+          save(savedEntry, KEY_ENTRY);
+        });
+
+        entryItem.appendChild(entryLabel);
+        entryItem.appendChild(entryInput);
+
+        // Salida
+        const exitItem = document.createElement("div");
+        exitItem.className = "dates-code-item";
+
+        const exitLabel = document.createElement("span");
+        exitLabel.className = "dates-code-label";
+        exitLabel.textContent = "Salida:";
+
+        const exitInput = document.createElement("input");
+        exitInput.type = "date";
+        exitInput.className = "date-input";
+        if (savedDates[id]) exitInput.value = savedDates[id];
+        exitInput.disabled = statusEl.dataset.state === "free";
+
+        exitInput.addEventListener("change", () => {
+          savedDates[id] = exitInput.value || null;
           save(savedDates, KEY_DATES);
           updateSummary();
         });
 
-        dateRow.appendChild(dateLabel);
-        dateRow.appendChild(dateInput);
+        exitItem.appendChild(exitLabel);
+        exitItem.appendChild(exitInput);
+
+        // Código entrada
+        const codeItem = document.createElement("div");
+        codeItem.className = "dates-code-item";
+
+        const codeLabel = document.createElement("span");
+        codeLabel.className = "dates-code-label";
+        codeLabel.textContent = "Código:";
+
+        const codeInput = document.createElement("input");
+        codeInput.type = "text";
+        codeInput.className = "code-input";
+        codeInput.placeholder = "PIN / código";
+
+        if (savedCodes[id]) codeInput.value = savedCodes[id];
+        codeInput.disabled = statusEl.dataset.state === "free";
+
+        codeInput.addEventListener("input", () => {
+          savedCodes[id] = codeInput.value || "";
+          save(savedCodes, KEY_CODE);
+        });
+
+        codeItem.appendChild(codeLabel);
+        codeItem.appendChild(codeInput);
+
+        datesCodeBlock.appendChild(entryItem);
+        datesCodeBlock.appendChild(exitItem);
+        datesCodeBlock.appendChild(codeItem);
 
         // BLOQUE HUÉSPED
         const guestBlock = document.createElement("div");
@@ -587,11 +724,11 @@ const firebaseConfig = {
         guestInput.className = "text-input";
         guestInput.placeholder = "Nombre huésped";
 
-        if (savedName[room.id]) guestInput.value = savedName[room.id];
+        if (savedName[id]) guestInput.value = savedName[id];
         guestInput.disabled = statusEl.dataset.state === "free";
 
         guestInput.addEventListener("input", () => {
-          savedName[room.id] = guestInput.value || "";
+          savedName[id] = guestInput.value || "";
           save(savedName, KEY_NAME);
           updateSummary();
         });
@@ -613,11 +750,11 @@ const firebaseConfig = {
         ageInput.min = "0";
         ageInput.placeholder = "Edad";
 
-        if (savedAge[room.id]) ageInput.value = savedAge[room.id];
+        if (savedAge[id]) ageInput.value = savedAge[id];
         ageInput.disabled = statusEl.dataset.state === "free";
 
         ageInput.addEventListener("input", () => {
-          savedAge[room.id] = ageInput.value || "";
+          savedAge[id] = ageInput.value || "";
           save(savedAge, KEY_AGE);
           updateSummary();
         });
@@ -643,14 +780,14 @@ const firebaseConfig = {
           natSelect.appendChild(opt);
         });
 
-        if (savedNat[room.id]) {
-          natSelect.value = savedNat[room.id];
+        if (savedNat[id]) {
+          natSelect.value = savedNat[id];
         }
 
         natSelect.disabled = statusEl.dataset.state === "free";
 
         natSelect.addEventListener("change", () => {
-          savedNat[room.id] = natSelect.value || "";
+          savedNat[id] = natSelect.value || "";
           save(savedNat, KEY_NAT);
         });
 
@@ -661,7 +798,7 @@ const firebaseConfig = {
         guestBlock.appendChild(ageRow);
         guestBlock.appendChild(natRow);
 
-        // Limpieza
+        // LIMPIEZA + SÁBANAS
         const cleanRow = document.createElement("div");
         cleanRow.className = "clean-row";
 
@@ -673,19 +810,44 @@ const firebaseConfig = {
         cleanBtn.className = "clean-btn";
 
         const colors = ["clean-green", "clean-red", "clean-purple", "clean-yellow"];
-        let cleanState = savedClean[room.id] ?? 0;
+        let cleanState = savedClean[id] ?? 0;
         cleanBtn.classList.add(colors[cleanState]);
 
         cleanBtn.addEventListener("click", () => {
           cleanBtn.classList.remove(colors[cleanState]);
           cleanState = (cleanState + 1) % colors.length;
           cleanBtn.classList.add(colors[cleanState]);
-          savedClean[room.id] = cleanState;
+          savedClean[id] = cleanState;
           save(savedClean, KEY_CLEAN);
         });
 
         cleanRow.appendChild(cleanLabel);
         cleanRow.appendChild(cleanBtn);
+
+        // Fecha cambio de sábanas
+        const sheetsBlock = document.createElement("div");
+        sheetsBlock.className = "sheets-block";
+
+        const sheetsLabel = document.createElement("span");
+        sheetsLabel.className = "sheets-label";
+        sheetsLabel.textContent = "Sábanas:";
+
+        const sheetsInput = document.createElement("input");
+        sheetsInput.type = "date";
+        sheetsInput.className = "sheets-input";
+
+        if (savedSheets[id]) sheetsInput.value = savedSheets[id];
+        sheetsInput.disabled = statusEl.dataset.state === "free";
+
+        sheetsInput.addEventListener("change", () => {
+          savedSheets[id] = sheetsInput.value || null;
+          save(savedSheets, KEY_SHEETS);
+        });
+
+        sheetsBlock.appendChild(sheetsLabel);
+        sheetsBlock.appendChild(sheetsInput);
+
+        cleanRow.appendChild(sheetsBlock);
 
         // Botón Ocupado/Libre
         const btn = document.createElement("button");
@@ -697,55 +859,75 @@ const firebaseConfig = {
 
         btn.addEventListener("click", () => {
           if (statusEl.dataset.state === "free") {
+            // Libre → Ocupado
             statusEl.dataset.state = "occupied";
             statusEl.classList.replace("status-free", "status-occupied");
             statusEl.textContent = "Ocupado";
             btn.textContent = "Cambiar a libre";
 
-            dateInput.disabled = false;
-            guestInput.disabled = false;
-            ageInput.disabled = false;
-            natSelect.disabled = false;
+            entryInput.disabled  = false;
+            exitInput.disabled   = false;
+            codeInput.disabled   = false;
+            guestInput.disabled  = false;
+            ageInput.disabled    = false;
+            natSelect.disabled   = false;
+            sheetsInput.disabled = false;
 
-            savedStates[room.id] = "occupied";
+            savedStates[id] = "occupied";
             save(savedStates, KEY_STATE);
           } else {
+            // Ocupado → Libre: limpiar todo lo del huésped
             statusEl.dataset.state = "free";
             statusEl.classList.replace("status-occupied", "status-free");
             statusEl.textContent = "Libre";
             btn.textContent = "Cambiar a ocupado";
 
-            dateInput.value = "";
-            guestInput.value = "";
-            ageInput.value = "";
-            natSelect.value = "";
+            entryInput.value  = "";
+            exitInput.value   = "";
+            codeInput.value   = "";
+            guestInput.value  = "";
+            ageInput.value    = "";
+            natSelect.value   = "";
+            sheetsInput.value = "";
 
-            dateInput.disabled = true;
-            guestInput.disabled = true;
-            ageInput.disabled = true;
-            natSelect.disabled = true;
+            entryInput.disabled  = true;
+            exitInput.disabled   = true;
+            codeInput.disabled   = true;
+            guestInput.disabled  = true;
+            ageInput.disabled    = true;
+            natSelect.disabled   = true;
+            sheetsInput.disabled = true;
 
-            savedStates[room.id] = "free";
+            savedStates[id] = "free";
             save(savedStates, KEY_STATE);
 
-            delete savedDates[room.id];
+            delete savedEntry[id];
+            save(savedEntry, KEY_ENTRY);
+
+            delete savedDates[id];
             save(savedDates, KEY_DATES);
 
-            delete savedName[room.id];
+            delete savedCodes[id];
+            save(savedCodes, KEY_CODE);
+
+            delete savedName[id];
             save(savedName, KEY_NAME);
 
-            delete savedAge[room.id];
+            delete savedAge[id];
             save(savedAge, KEY_AGE);
 
-            delete savedNat[room.id];
+            delete savedNat[id];
             save(savedNat, KEY_NAT);
+
+            delete savedSheets[id];
+            save(savedSheets, KEY_SHEETS);
           }
           updateSummary();
         });
 
         // Montar tarjeta
         card.appendChild(header);
-        card.appendChild(dateRow);
+        card.appendChild(datesCodeBlock);
         card.appendChild(guestBlock);
         card.appendChild(cleanRow);
         card.appendChild(btn);
@@ -756,7 +938,7 @@ const firebaseConfig = {
       exportBtn.addEventListener("click", exportToCSV);
     }
 
-    // ---- Inicio: cargar datos remotos y luego construir la UI ----
+    // ---- Inicio ----
     loadData().then(() => {
       buildUI();
       updateSummary();
@@ -764,4 +946,3 @@ const firebaseConfig = {
   </script>
 </body>
 </html>
-
