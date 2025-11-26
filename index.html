@@ -2,7 +2,8 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Estado de habitaciones</title>
+  <title>Estado de habitaciones Alsatia</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     * { box-sizing: border-box; }
     body {
@@ -251,13 +252,31 @@
 <body>
   <h1>Estado de habitaciones</h1>
   <p class="subtitle">
-    Estados, fechas, limpieza, nacionalidad, nombre y edad se guardan automáticamente en este navegador.
+    Estados, fechas, limpieza, nacionalidad, nombre y edad se guardan y se sincronizan entre dispositivos.
   </p>
 
   <div id="summary"></div>
   <button id="exportBtn" class="export-btn">Exportar a Excel (CSV)</button>
 
   <div id="rooms"></div>
+
+  <!-- Firebase (compat para hacerlo fácil en un HTML normal) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script>
+    // Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyCwUnec12Y7FnLUTuVQ74IpKBOgyjbA3_w",
+  authDomain: "hab-alsatia.firebaseapp.com",
+  projectId: "hab-alsatia",
+  storageBucket: "hab-alsatia.firebasestorage.app",
+  messagingSenderId: "1004070180298",
+  appId: "1:1004070180298:web:9c27a2dd482489ad196b33"
+};
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+  </script>
 
   <script>
     // LISTA DE HABITACIONES
@@ -273,21 +292,20 @@
     const KEY_NAME  = "nombre_habitaciones";
     const KEY_AGE   = "edad_habitaciones";
 
-    // Datos almacenados
-    const savedStates = JSON.parse(localStorage.getItem(KEY_STATE)) || {};
-    const savedDates  = JSON.parse(localStorage.getItem(KEY_DATES)) || {};
-    const savedClean  = JSON.parse(localStorage.getItem(KEY_CLEAN)) || {};
-    const savedNat    = JSON.parse(localStorage.getItem(KEY_NAT))   || {};
-    const savedName   = JSON.parse(localStorage.getItem(KEY_NAME))  || {};
-    const savedAge    = JSON.parse(localStorage.getItem(KEY_AGE))   || {};
+    // Estado en memoria (se rellena desde Firestore o localStorage)
+    let savedStates = {};
+    let savedDates  = {};
+    let savedClean  = {};
+    let savedNat    = {};
+    let savedName   = {};
+    let savedAge    = {};
 
     const roomsContainer = document.getElementById("rooms");
     const summaryDiv = document.getElementById("summary");
     const exportBtn = document.getElementById("exportBtn");
 
-    function save(obj, key) {
-      localStorage.setItem(key, JSON.stringify(obj));
-    }
+    // Documento único en Firestore donde guardamos todo
+    const docRef = db.collection("alsatia").doc("habitaciones");
 
     // Lista de países
     const countries = [
@@ -305,9 +323,78 @@
       "Turquía", "Ucrania", "Uruguay", "Venezuela", "Otro"
     ];
 
-    // Texto para estado de limpieza
     const cleanLabels = ["Limpia", "Sucia", "En proceso", "Revisar"];
 
+    // ---- Sincronización local + remota ----
+    function aggregateState() {
+      return {
+        states: savedStates,
+        dates:  savedDates,
+        clean:  savedClean,
+        nat:    savedNat,
+        names:  savedName,
+        ages:   savedAge,
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    function loadFromLocal() {
+      savedStates = JSON.parse(localStorage.getItem(KEY_STATE)) || {};
+      savedDates  = JSON.parse(localStorage.getItem(KEY_DATES)) || {};
+      savedClean  = JSON.parse(localStorage.getItem(KEY_CLEAN)) || {};
+      savedNat    = JSON.parse(localStorage.getItem(KEY_NAT))   || {};
+      savedName   = JSON.parse(localStorage.getItem(KEY_NAME))  || {};
+      savedAge    = JSON.parse(localStorage.getItem(KEY_AGE))   || {};
+    }
+
+    function mirrorToLocal() {
+      localStorage.setItem(KEY_STATE, JSON.stringify(savedStates));
+      localStorage.setItem(KEY_DATES, JSON.stringify(savedDates));
+      localStorage.setItem(KEY_CLEAN, JSON.stringify(savedClean));
+      localStorage.setItem(KEY_NAT,   JSON.stringify(savedNat));
+      localStorage.setItem(KEY_NAME,  JSON.stringify(savedName));
+      localStorage.setItem(KEY_AGE,   JSON.stringify(savedAge));
+    }
+
+    let remoteSaveTimeout = null;
+    function scheduleRemoteSave() {
+      if (!docRef) return;
+      if (remoteSaveTimeout) clearTimeout(remoteSaveTimeout);
+      remoteSaveTimeout = setTimeout(() => {
+        docRef.set(aggregateState()).catch(err => {
+          console.error("Error guardando en Firestore:", err);
+        });
+      }, 500); // pequeño debounce
+    }
+
+    function save(obj, key) {
+      localStorage.setItem(key, JSON.stringify(obj));
+      scheduleRemoteSave();
+    }
+
+    function loadData() {
+      return docRef.get().then(doc => {
+        if (doc.exists) {
+          const data = doc.data() || {};
+          savedStates = data.states || {};
+          savedDates  = data.dates  || {};
+          savedClean  = data.clean  || {};
+          savedNat    = data.nat    || {};
+          savedName   = data.names  || {};
+          savedAge    = data.ages   || {};
+          mirrorToLocal();
+        } else {
+          // No hay datos remotos aún → tirar de local (o vacío) y subirlos
+          loadFromLocal();
+          return docRef.set(aggregateState());
+        }
+      }).catch(err => {
+        console.error("Error cargando Firestore, uso datos locales:", err);
+        loadFromLocal();
+      });
+    }
+
+    // ---- Resumen y exportar ----
     function updateSummary() {
       const total = rooms.length;
       let occupied = 0;
@@ -335,7 +422,6 @@
         }
       });
 
-      // Rango de edades
       let ageRangeText = "Sin edades registradas.";
       if (ages.length > 0) {
         const minAge = Math.min(...ages);
@@ -345,7 +431,6 @@
           : `${minAge}–${maxAge} años`;
       }
 
-      // Próximas salidas
       departures.sort((a, b) => a.date - b.date);
       let nextDeparturesText = "No hay salidas registradas.";
       if (departures.length > 0) {
@@ -397,8 +482,7 @@
         const cleanIdx = savedClean[id] ?? 0;
         const cleanText = cleanLabels[cleanIdx] || cleanLabels[0];
 
-        const row = [room.name, stateText, name, age, nat, date, cleanText];
-        rows.push(row);
+        rows.push([room.name, stateText, name, age, nat, date, cleanText]);
       });
 
       const csvContent = rows
@@ -424,255 +508,257 @@
       URL.revokeObjectURL(url);
     }
 
-    rooms.forEach(room => {
-      const card = document.createElement("div");
-      card.className = "room-card";
+    // ---- Construir UI una vez que tenemos datos ----
+    function buildUI() {
+      roomsContainer.innerHTML = "";
 
-      /* CABECERA GRANDE */
-      const header = document.createElement("div");
-      header.className = "room-header";
+      rooms.forEach(room => {
+        const card = document.createElement("div");
+        card.className = "room-card";
 
-      const nameEl = document.createElement("div");
-      nameEl.className = "room-name";
-      nameEl.textContent = room.name;
+        // CABECERA
+        const header = document.createElement("div");
+        header.className = "room-header";
 
-      const statusEl = document.createElement("div");
-      statusEl.className = "status-pill";
-      statusEl.dataset.state = savedStates[room.id] || "free";
+        const nameEl = document.createElement("div");
+        nameEl.className = "room-name";
+        nameEl.textContent = room.name;
 
-      if (statusEl.dataset.state === "occupied") {
-        statusEl.classList.add("status-occupied");
-        statusEl.textContent = "Ocupado";
-      } else {
-        statusEl.classList.add("status-free");
-        statusEl.textContent = "Libre";
-      }
+        const statusEl = document.createElement("div");
+        statusEl.className = "status-pill";
+        statusEl.dataset.state = savedStates[room.id] || "free";
 
-      header.appendChild(nameEl);
-      header.appendChild(statusEl);
-
-      /* FECHA DE SALIDA (fila principal) */
-      const dateRow = document.createElement("div");
-      dateRow.className = "date-row-main";
-
-      const dateLabel = document.createElement("span");
-      dateLabel.className = "date-label-main";
-      dateLabel.textContent = "Salida:";
-
-      const dateInput = document.createElement("input");
-      dateInput.type = "date";
-      dateInput.className = "date-input";
-
-      if (savedDates[room.id]) dateInput.value = savedDates[room.id];
-      dateInput.disabled = statusEl.dataset.state === "free";
-
-      dateInput.addEventListener("change", () => {
-        savedDates[room.id] = dateInput.value || null;
-        save(savedDates, KEY_DATES);
-        updateSummary();
-      });
-
-      dateRow.appendChild(dateLabel);
-      dateRow.appendChild(dateInput);
-
-      /* BLOQUE DE HUÉSPED (nombre, edad, nacionalidad) */
-      const guestBlock = document.createElement("div");
-      guestBlock.className = "guest-block";
-
-      const guestTitle = document.createElement("div");
-      guestTitle.className = "guest-block-title";
-      guestTitle.textContent = "Datos del huésped";
-      guestBlock.appendChild(guestTitle);
-
-      // Nombre
-      const guestRow = document.createElement("div");
-      guestRow.className = "row";
-
-      const guestLabel = document.createElement("span");
-      guestLabel.className = "row-label";
-      guestLabel.textContent = "Nombre:";
-
-      const guestInput = document.createElement("input");
-      guestInput.type = "text";
-      guestInput.className = "text-input";
-      guestInput.placeholder = "Nombre huésped";
-
-      if (savedName[room.id]) guestInput.value = savedName[room.id];
-      guestInput.disabled = statusEl.dataset.state === "free";
-
-      guestInput.addEventListener("input", () => {
-        savedName[room.id] = guestInput.value || "";
-        save(savedName, KEY_NAME);
-        updateSummary();
-      });
-
-      guestRow.appendChild(guestLabel);
-      guestRow.appendChild(guestInput);
-
-      // Edad
-      const ageRow = document.createElement("div");
-      ageRow.className = "row";
-
-      const ageLabel = document.createElement("span");
-      ageLabel.className = "row-label";
-      ageLabel.textContent = "Edad:";
-
-      const ageInput = document.createElement("input");
-      ageInput.type = "number";
-      ageInput.className = "number-input";
-      ageInput.min = "0";
-      ageInput.placeholder = "Edad";
-
-      if (savedAge[room.id]) ageInput.value = savedAge[room.id];
-      ageInput.disabled = statusEl.dataset.state === "free";
-
-      ageInput.addEventListener("input", () => {
-        savedAge[room.id] = ageInput.value || "";
-        save(savedAge, KEY_AGE);
-        updateSummary();
-      });
-
-      ageRow.appendChild(ageLabel);
-      ageRow.appendChild(ageInput);
-
-      // Nacionalidad
-      const natRow = document.createElement("div");
-      natRow.className = "row";
-
-      const natLabel = document.createElement("span");
-      natLabel.className = "row-label";
-      natLabel.textContent = "Nacionalidad:";
-
-      const natSelect = document.createElement("select");
-      natSelect.className = "nationality-select";
-
-      countries.forEach(country => {
-        const opt = document.createElement("option");
-        opt.value = country;
-        opt.textContent = country === "" ? "Seleccione país..." : country;
-        natSelect.appendChild(opt);
-      });
-
-      if (savedNat[room.id]) {
-        natSelect.value = savedNat[room.id];
-      }
-
-      natSelect.disabled = statusEl.dataset.state === "free";
-
-      natSelect.addEventListener("change", () => {
-        savedNat[room.id] = natSelect.value || "";
-        save(savedNat, KEY_NAT);
-      });
-
-      natRow.appendChild(natLabel);
-      natRow.appendChild(natSelect);
-
-      guestBlock.appendChild(guestRow);
-      guestBlock.appendChild(ageRow);
-      guestBlock.appendChild(natRow);
-
-      /* ESTADO DE LIMPIEZA (debajo del paquete) */
-      const cleanRow = document.createElement("div");
-      cleanRow.className = "clean-row";
-
-      const cleanLabel = document.createElement("span");
-      cleanLabel.className = "clean-label";
-      cleanLabel.textContent = "Limpieza:";
-
-      const cleanBtn = document.createElement("button");
-      cleanBtn.className = "clean-btn";
-
-      const colors = ["clean-green", "clean-red", "clean-purple", "clean-yellow"];
-      let cleanState = savedClean[room.id] ?? 0;
-      cleanBtn.classList.add(colors[cleanState]);
-
-      cleanBtn.addEventListener("click", () => {
-        cleanBtn.classList.remove(colors[cleanState]);
-        cleanState = (cleanState + 1) % colors.length;
-        cleanBtn.classList.add(colors[cleanState]);
-        savedClean[room.id] = cleanState;
-        save(savedClean, KEY_CLEAN);
-      });
-
-      cleanRow.appendChild(cleanLabel);
-      cleanRow.appendChild(cleanBtn);
-
-      /* BOTÓN OCUPADO/LIBRE */
-      const btn = document.createElement("button");
-      btn.className = "toggle-btn";
-      btn.textContent =
-        statusEl.dataset.state === "free"
-          ? "Cambiar a ocupado"
-          : "Cambiar a libre";
-
-      btn.addEventListener("click", () => {
-        if (statusEl.dataset.state === "free") {
-          // Libre → Ocupado
-          statusEl.dataset.state = "occupied";
-          statusEl.classList.replace("status-free", "status-occupied");
+        if (statusEl.dataset.state === "occupied") {
+          statusEl.classList.add("status-occupied");
           statusEl.textContent = "Ocupado";
-          btn.textContent = "Cambiar a libre";
-
-          dateInput.disabled = false;
-          guestInput.disabled = false;
-          ageInput.disabled = false;
-          natSelect.disabled = false;
-
-          savedStates[room.id] = "occupied";
-          save(savedStates, KEY_STATE);
         } else {
-          // Ocupado → Libre: limpiar datos de huésped
-          statusEl.dataset.state = "free";
-          statusEl.classList.replace("status-occupied", "status-free");
+          statusEl.classList.add("status-free");
           statusEl.textContent = "Libre";
-          btn.textContent = "Cambiar a ocupado";
-
-          // Limpiar campos
-          dateInput.value = "";
-          guestInput.value = "";
-          ageInput.value = "";
-          natSelect.value = "";
-
-          // Desactivar campos
-          dateInput.disabled = true;
-          guestInput.disabled = true;
-          ageInput.disabled = true;
-          natSelect.disabled = true;
-
-          // Borrar de memoria
-          savedStates[room.id] = "free";
-          save(savedStates, KEY_STATE);
-
-          delete savedDates[room.id];
-          save(savedDates, KEY_DATES);
-
-          delete savedName[room.id];
-          save(savedName, KEY_NAME);
-
-          delete savedAge[room.id];
-          save(savedAge, KEY_AGE);
-
-          delete savedNat[room.id];
-          save(savedNat, KEY_NAT);
         }
-        updateSummary();
+
+        header.appendChild(nameEl);
+        header.appendChild(statusEl);
+
+        // FECHA
+        const dateRow = document.createElement("div");
+        dateRow.className = "date-row-main";
+
+        const dateLabel = document.createElement("span");
+        dateLabel.className = "date-label-main";
+        dateLabel.textContent = "Salida:";
+
+        const dateInput = document.createElement("input");
+        dateInput.type = "date";
+        dateInput.className = "date-input";
+
+        if (savedDates[room.id]) dateInput.value = savedDates[room.id];
+        dateInput.disabled = statusEl.dataset.state === "free";
+
+        dateInput.addEventListener("change", () => {
+          savedDates[room.id] = dateInput.value || null;
+          save(savedDates, KEY_DATES);
+          updateSummary();
+        });
+
+        dateRow.appendChild(dateLabel);
+        dateRow.appendChild(dateInput);
+
+        // BLOQUE HUÉSPED
+        const guestBlock = document.createElement("div");
+        guestBlock.className = "guest-block";
+
+        const guestTitle = document.createElement("div");
+        guestTitle.className = "guest-block-title";
+        guestTitle.textContent = "Datos del huésped";
+        guestBlock.appendChild(guestTitle);
+
+        // Nombre
+        const guestRow = document.createElement("div");
+        guestRow.className = "row";
+
+        const guestLabel = document.createElement("span");
+        guestLabel.className = "row-label";
+        guestLabel.textContent = "Nombre:";
+
+        const guestInput = document.createElement("input");
+        guestInput.type = "text";
+        guestInput.className = "text-input";
+        guestInput.placeholder = "Nombre huésped";
+
+        if (savedName[room.id]) guestInput.value = savedName[room.id];
+        guestInput.disabled = statusEl.dataset.state === "free";
+
+        guestInput.addEventListener("input", () => {
+          savedName[room.id] = guestInput.value || "";
+          save(savedName, KEY_NAME);
+          updateSummary();
+        });
+
+        guestRow.appendChild(guestLabel);
+        guestRow.appendChild(guestInput);
+
+        // Edad
+        const ageRow = document.createElement("div");
+        ageRow.className = "row";
+
+        const ageLabel = document.createElement("span");
+        ageLabel.className = "row-label";
+        ageLabel.textContent = "Edad:";
+
+        const ageInput = document.createElement("input");
+        ageInput.type = "number";
+        ageInput.className = "number-input";
+        ageInput.min = "0";
+        ageInput.placeholder = "Edad";
+
+        if (savedAge[room.id]) ageInput.value = savedAge[room.id];
+        ageInput.disabled = statusEl.dataset.state === "free";
+
+        ageInput.addEventListener("input", () => {
+          savedAge[room.id] = ageInput.value || "";
+          save(savedAge, KEY_AGE);
+          updateSummary();
+        });
+
+        ageRow.appendChild(ageLabel);
+        ageRow.appendChild(ageInput);
+
+        // Nacionalidad
+        const natRow = document.createElement("div");
+        natRow.className = "row";
+
+        const natLabel = document.createElement("span");
+        natLabel.className = "row-label";
+        natLabel.textContent = "Nacionalidad:";
+
+        const natSelect = document.createElement("select");
+        natSelect.className = "nationality-select";
+
+        countries.forEach(country => {
+          const opt = document.createElement("option");
+          opt.value = country;
+          opt.textContent = country === "" ? "Seleccione país..." : country;
+          natSelect.appendChild(opt);
+        });
+
+        if (savedNat[room.id]) {
+          natSelect.value = savedNat[room.id];
+        }
+
+        natSelect.disabled = statusEl.dataset.state === "free";
+
+        natSelect.addEventListener("change", () => {
+          savedNat[room.id] = natSelect.value || "";
+          save(savedNat, KEY_NAT);
+        });
+
+        natRow.appendChild(natLabel);
+        natRow.appendChild(natSelect);
+
+        guestBlock.appendChild(guestRow);
+        guestBlock.appendChild(ageRow);
+        guestBlock.appendChild(natRow);
+
+        // Limpieza
+        const cleanRow = document.createElement("div");
+        cleanRow.className = "clean-row";
+
+        const cleanLabel = document.createElement("span");
+        cleanLabel.className = "clean-label";
+        cleanLabel.textContent = "Limpieza:";
+
+        const cleanBtn = document.createElement("button");
+        cleanBtn.className = "clean-btn";
+
+        const colors = ["clean-green", "clean-red", "clean-purple", "clean-yellow"];
+        let cleanState = savedClean[room.id] ?? 0;
+        cleanBtn.classList.add(colors[cleanState]);
+
+        cleanBtn.addEventListener("click", () => {
+          cleanBtn.classList.remove(colors[cleanState]);
+          cleanState = (cleanState + 1) % colors.length;
+          cleanBtn.classList.add(colors[cleanState]);
+          savedClean[room.id] = cleanState;
+          save(savedClean, KEY_CLEAN);
+        });
+
+        cleanRow.appendChild(cleanLabel);
+        cleanRow.appendChild(cleanBtn);
+
+        // Botón Ocupado/Libre
+        const btn = document.createElement("button");
+        btn.className = "toggle-btn";
+        btn.textContent =
+          statusEl.dataset.state === "free"
+            ? "Cambiar a ocupado"
+            : "Cambiar a libre";
+
+        btn.addEventListener("click", () => {
+          if (statusEl.dataset.state === "free") {
+            statusEl.dataset.state = "occupied";
+            statusEl.classList.replace("status-free", "status-occupied");
+            statusEl.textContent = "Ocupado";
+            btn.textContent = "Cambiar a libre";
+
+            dateInput.disabled = false;
+            guestInput.disabled = false;
+            ageInput.disabled = false;
+            natSelect.disabled = false;
+
+            savedStates[room.id] = "occupied";
+            save(savedStates, KEY_STATE);
+          } else {
+            statusEl.dataset.state = "free";
+            statusEl.classList.replace("status-occupied", "status-free");
+            statusEl.textContent = "Libre";
+            btn.textContent = "Cambiar a ocupado";
+
+            dateInput.value = "";
+            guestInput.value = "";
+            ageInput.value = "";
+            natSelect.value = "";
+
+            dateInput.disabled = true;
+            guestInput.disabled = true;
+            ageInput.disabled = true;
+            natSelect.disabled = true;
+
+            savedStates[room.id] = "free";
+            save(savedStates, KEY_STATE);
+
+            delete savedDates[room.id];
+            save(savedDates, KEY_DATES);
+
+            delete savedName[room.id];
+            save(savedName, KEY_NAME);
+
+            delete savedAge[room.id];
+            save(savedAge, KEY_AGE);
+
+            delete savedNat[room.id];
+            save(savedNat, KEY_NAT);
+          }
+          updateSummary();
+        });
+
+        // Montar tarjeta
+        card.appendChild(header);
+        card.appendChild(dateRow);
+        card.appendChild(guestBlock);
+        card.appendChild(cleanRow);
+        card.appendChild(btn);
+
+        roomsContainer.appendChild(card);
       });
 
-      /* ARMAR TARJETA */
-      card.appendChild(header);      // grande: habitación + estado
-      card.appendChild(dateRow);     // fecha en negrita
-      card.appendChild(guestBlock);  // paquete nombre + edad + nacionalidad
-      card.appendChild(cleanRow);    // limpieza
-      card.appendChild(btn);         // botón final
+      exportBtn.addEventListener("click", exportToCSV);
+    }
 
-      roomsContainer.appendChild(card);
+    // ---- Inicio: cargar datos remotos y luego construir la UI ----
+    loadData().then(() => {
+      buildUI();
+      updateSummary();
     });
-
-    // Eventos globales
-    exportBtn.addEventListener("click", exportToCSV);
-
-    // Primera actualización del resumen
-    updateSummary();
   </script>
 </body>
 </html>
